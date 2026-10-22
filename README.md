@@ -1,5 +1,20 @@
 # Five86-1 Linux Privilege Escalation Lab
 
+## Table of Contents
+
+1. [Overview](#1-overview)
+2. [Executive Summary](#2-executive-summary)
+3. [Attack Chain](#3-attack-chain)
+4. [Initial Access: OpenNetAdmin](#4-initial-access-opennetadmin)
+5. [Credential Discovery and Access as Douglas](#5-credential-discovery-and-access-as-douglas)
+6. [Lateral Movement: Douglas to Jen](#6-lateral-movement-douglas-to-jen)
+7. [Lateral Movement: Jen to Moss](#7-lateral-movement-jen-to-moss)
+8. [Privilege Escalation: Moss to Root](#8-privilege-escalation-moss-to-root)
+9. [Flag Discovery and Evidence](#9-flag-discovery-and-evidence)
+10. [Key Findings Summary](#10-key-findings-summary)
+11. [Lessons Learned](#11-lessons-learned)
+12. [Conclusion](#12-conclusion)
+
 ## 1. Overview
 
 **Target:** Five86-1 / TwoThreeOne  
