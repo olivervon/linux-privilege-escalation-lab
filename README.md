@@ -1,5 +1,7 @@
 # Five86-1 Linux Privilege Escalation Lab
 
+A documented security assessment of the Five86-1 Linux lab, covering initial access, credential discovery, lateral movement, privilege escalation, and remediation.
+
 ## Table of Contents
 
 1. [Overview](#1-overview)
@@ -11,60 +13,93 @@
 7. [Lateral Movement: Jen to Moss](#7-lateral-movement-jen-to-moss)
 8. [Privilege Escalation: Moss to Root](#8-privilege-escalation-moss-to-root)
 9. [Flag Discovery and Evidence](#9-flag-discovery-and-evidence)
-10. [Key Findings Summary](#10-key-findings-summary)
-11. [Lessons Learned](#11-lessons-learned)
-12. [Conclusion](#12-conclusion)
+10. [Key Findings and Risk Assessment](#10-key-findings-and-risk-assessment)
+11. [Remediation Priorities](#11-remediation-priorities)
+12. [Lessons Learned](#12-lessons-learned)
+13. [Conclusion](#13-conclusion)
+
+---
 
 ## 1. Overview
 
-**Target:** Five86-1 / TwoThreeOne  
-**Target IP:** `10.0.0.231`  
-**Operating system:** Debian GNU/Linux 10  
-**Assessment type:** Authorized lab penetration test  
-**Focus areas:** Initial access, credential discovery, lateral movement, Linux privilege escalation, and evidence collection
+| Field | Details |
+|---|---|
+| Target | Five86-1 |
+| Hostname | TwoThreeOne |
+| Target IP | `10.0.0.231` |
+| Operating system | Debian GNU/Linux 10 |
+| Assessment type | Authorized lab penetration test |
+| Focus areas | Initial access, credential discovery, lateral movement, privilege escalation |
 
 ### Objective
 
-The objective was to gain initial access to the target, move between local user accounts, escalate privileges to root, and locate the flags placed throughout the lab.
+The objective was to obtain initial access to the target, investigate its security configuration, move between local user accounts, and escalate privileges to root.
 
-The assessment focused on identifying misconfigurations and weak security controls that could allow a low-privileged user to gain elevated access.
+The assessment focused on identifying weaknesses that could be chained together to compromise the system.
+
+This report documents the observed attack path, relevant technical evidence, security implications, and recommended remediation measures.
+
+### Scope
+
+The assessment was conducted against the Five86-1 lab target at `10.0.0.231`.
+
+All activities described in this report relate to the authorized lab environment.
 
 ## 2. Executive Summary
 
-The assessment identified multiple weaknesses that could be chained together to obtain root-level access.
+The assessment demonstrated how multiple security weaknesses could be chained together to obtain root-level privileges on a Linux system.
 
-Initial access was obtained through a command execution vulnerability in OpenNetAdmin. Subsequent enumeration revealed credential material, an exposed password hash, an email containing another user's password, and an overly permissive `sudo` rule.
+Initial access was obtained through command execution in the OpenNetAdmin web application. Subsequent enumeration revealed exposed application configuration, a recoverable password hash, an overly permissive `sudo` rule, and a password disclosed through local email.
 
-The final privilege escalation was achieved through a root-owned SUID executable located in the `moss` user's home directory. Running the executable resulted in a shell with an effective user ID of `0`.
+These weaknesses enabled movement between the `www-data`, `douglas`, `jen`, and `moss` accounts.
 
-Three flags were located during the lab. Their values are intentionally excluded from this report.
+The final privilege escalation involved a root-owned SUID executable located in Moss's home directory. Executing the program exposed a shell with an effective user ID of `0`.
+
+Three flags were reported as discovered during the lab. Their values are intentionally excluded from this report.
+
+### Main findings
+
+- Command execution through a vulnerable web application.
+- Exposed application configuration and credential material.
+- A recoverable password hash associated with a local user.
+- An overly permissive `sudo` rule allowing file operations as another user.
+- Plaintext credential disclosure through local email.
+- A root-owned SUID executable that exposed a path to root-level privileges.
+
+The combined weaknesses enabled a progression from initial access to root-level effective privileges.
 
 ## 3. Attack Chain
+
+The following table summarizes the observed sequence.
 
 | Stage | Account or context | Result |
 |---|---|---|
 | 1. Initial access | `www-data` | Obtained command execution through OpenNetAdmin |
-| 2. Credential discovery | `douglas` | Recovered a password from an exposed password hash and gained SSH access |
-| 3. Lateral movement | `jen` | Abused an overly permissive `sudo` rule to modify SSH authorized keys |
-| 4. Lateral movement | `moss` | Discovered a password in a local email |
-| 5. Privilege escalation | `root` | Exploited the behavior of a root-owned SUID executable |
-| 6. Flag discovery | Root shell | Located the root flag and the remaining lab flag |
+| 2. Credential discovery | `douglas` | Recovered a password from an exposed hash and obtained SSH access |
+| 3. Lateral movement | `jen` | Modified SSH authorization using a `sudo`-permitted file-copy operation |
+| 4. Lateral movement | `moss` | Used a password disclosed in a local email |
+| 5. Privilege escalation | Effective UID 0 | Obtained a shell with root-level effective privileges |
+| 6. Flag discovery | Multiple locations | Located three lab flags |
+
+The attack path illustrates how application vulnerabilities, credential exposure, excessive privileges, and unsafe privileged executables can combine into a complete system compromise.
 
 ## 4. Initial Access: OpenNetAdmin
 
-### Discovery
+### 4.1 Discovery
 
-The target exposed the following services:
+The target exposed the following services during reconnaissance.
 
-- TCP/22: OpenSSH
-- TCP/80: Apache HTTP Server
-- TCP/10000: Webmin
+| Port | Service |
+|---|---|
+| TCP/22 | OpenSSH |
+| TCP/80 | Apache HTTP Server |
+| TCP/10000 | Webmin |
 
-The web server hosted an OpenNetAdmin installation at `/ona/`. The identified application version was OpenNetAdmin 18.1.1.
+An OpenNetAdmin installation was identified at `/ona/` on the web server. The identified application version was OpenNetAdmin 18.1.1.
 
-### Exploitation
+### 4.2 Exploitation
 
-A publicly available exploit was used against the lab's OpenNetAdmin installation to obtain command execution as `www-data`.
+A publicly available exploit was used against the lab installation to obtain command execution as `www-data`.
 
 The exploit script used was:
 
@@ -76,62 +111,80 @@ The command used to launch the exploit was:
 bash /usr/share/exploitdb/exploits/php/webapps/47691.sh http://10.0.0.231/ona/
 ```
 
-### Finding
+The resulting access provided an initial foothold for further enumeration.
 
-**Severity: High**
+### 4.3 Security impact
 
-The application allowed an attacker to execute commands on the host. This provided the initial foothold needed for further enumeration and privilege escalation.
+**Observed result:** Command execution was obtained on the target as `www-data`.
 
-### Remediation
+This access allowed further investigation of application files, local configuration, and potential credential exposure.
 
-- Upgrade OpenNetAdmin to a supported, patched version.
-- Remove unused or exposed administrative applications.
-- Restrict access to management interfaces.
-- Monitor web application logs for suspicious requests and command execution.
+**Preliminary severity: High.**
+
+The final severity depends on the application's exposure, the privileges of the compromised service account, and the potential for subsequent privilege escalation.
+
+### 4.4 Recommended remediation
+
+- Upgrade or replace the vulnerable application with a supported, patched version.
+- Remove applications that are no longer required.
+- Restrict access to administrative interfaces.
+- Run web applications with the minimum privileges necessary.
+- Review web server logs for suspicious requests and command execution.
+- Investigate whether application compromise could expose credentials or sensitive files.
 
 ## 5. Credential Discovery and Access as Douglas
 
-Database configuration files were inspected during enumeration.
+### 5.1 Application configuration
 
-The following file contained database connection information:
+During local enumeration, the following configuration file was identified:
 
 `/opt/ona/www/local/config/database_settings.inc.php`
 
-The configuration exposed credentials for the OpenNetAdmin database. Additional credential material was found in:
+The file contained database connection information for OpenNetAdmin.
+
+Exposed database credentials can permit unauthorized database access, depending on the account's permissions and whether the credentials are reused elsewhere.
+
+The exact privileges and subsequent use of these database credentials were not established in this assessment.
+
+### 5.2 Password hash discovery
+
+Additional credential material was discovered in:
 
 `/var/www/.htpasswd`
 
 The file contained an Apache password hash associated with the `douglas` account.
 
-### Password recovery
+The hash was copied to a local file on the attacking machine and tested using John the Ripper with a constrained character mask based on the available lab clues.
 
-The hash was copied into a local file on the attacking machine and tested using John the Ripper with a constrained character mask based on the available lab clues.
-
-The recovered password was then used to establish an SSH session as `douglas`.
+The password was recovered and subsequently used to establish SSH access.
 
 ```bash
 ssh douglas@10.0.0.231
 ```
 
-### Finding
+### 5.3 Security impact
 
-**Severity: High**
+**Observed result:** SSH access was obtained as `douglas` using a recovered password.
 
-Exposed credential material and a recoverable password allowed access to a local user account.
+Exposed password hashes create an offline password-cracking risk. If a password is recovered, the associated account may be compromised.
 
-### Remediation
+**Preliminary severity: High.**
 
-- Remove secrets from web-accessible directories and application configuration.
-- Restrict access to password files.
-- Use strong, unique passwords resistant to offline cracking.
-- Rotate credentials after exposure.
-- Avoid reusing credentials across services and accounts.
+### 5.4 Recommended remediation
+
+- Remove unnecessary secrets from application configuration files.
+- Restrict access to credential stores and sensitive configuration.
+- Use strong, unique passwords and appropriate password-hashing mechanisms.
+- Rotate credentials after suspected exposure.
+- Avoid password reuse across applications and system accounts.
+- Restrict database accounts to the minimum permissions required.
+- Review whether web service accounts can read files containing sensitive credentials.
 
 ## 6. Lateral Movement: Douglas to Jen
 
-### Discovery
+### 6.1 Discovery
 
-The following command was used to enumerate the available `sudo` permissions:
+The available `sudo` permissions were enumerated using:
 
 ```bash
 sudo -l
@@ -139,19 +192,19 @@ sudo -l
 
 The output showed that `douglas` could execute `/bin/cp` as `jen` without entering a password.
 
-This permission was overly broad because it allowed the caller to choose the source and destination of a file copy with the privileges of another user.
+Allowing a user to execute a general-purpose file-copy utility as another user can be dangerous when the caller controls the source and destination paths.
 
-### Exploitation
+In this case, the permission allowed modification of Jen's SSH authorization file.
 
-A new SSH key pair was generated, and the public key was added to a temporary file alongside the existing authorized key.
+### 6.2 Exploitation
 
-The key pair was generated with:
+An Ed25519 SSH key pair was generated for the lab:
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/jen_lab -N ''
 ```
 
-The existing authorized keys were copied into a temporary file, and the new public key was appended.
+The existing authorized keys were copied into a temporary file, and the newly generated public key was appended.
 
 The temporary file was then copied to Jen's SSH authorization file using the permitted `sudo` command:
 
@@ -159,105 +212,115 @@ The temporary file was then copied to Jen's SSH authorization file using the per
 sudo -u jen /bin/cp /tmp/jen_keys /home/jen/.ssh/authorized_keys
 ```
 
-SSH access as `jen` was subsequently obtained using the new private key.
+SSH access was subsequently obtained as `jen` using the corresponding private key:
 
 ```bash
 ssh -i ~/.ssh/jen_lab jen@10.0.0.231
 ```
 
-The account transition was verified:
+The account transition was checked using:
 
 ```bash
 id
 ```
 
-Output confirmed UID `1003` and the `jen` group.
+The recorded output confirmed UID `1003` and the `jen` group.
 
-### Finding
+### 6.3 Security impact
 
-**Severity: High**
+**Observed result:** Access was obtained as `jen` after modifying the account's SSH authorization configuration.
 
-The unrestricted use of `cp` as another user allowed modification of that user's SSH authorization configuration.
+The `sudo` rule allowed a lower-privileged user to modify a file controlling authentication for another account.
 
-### Remediation
+**Preliminary severity: High.**
 
-- Avoid granting unrestricted access to general-purpose file utilities through `sudo`.
+### 6.4 Recommended remediation
+
+- Avoid unrestricted `sudo` access to general-purpose file utilities.
 - Replace broad command permissions with narrowly scoped administrative scripts.
-- Protect SSH authorization files and monitor changes to them.
-- Review `sudoers` rules for commands that permit arbitrary source and destination paths.
+- Review `sudoers` rules for unsafe combinations of commands and arguments.
+- Restrict write access to SSH authorization files.
+- Monitor changes to `authorized_keys` files.
+- Alert on unexpected SSH key additions and modifications to privileged users' home directories.
 
 ## 7. Lateral Movement: Jen to Moss
 
-### Discovery
+### 7.1 Discovery
 
-The user's mail file was inspected:
+The local mail file associated with Jen was inspected:
 
 ```bash
 cat /var/mail/jen
 ```
 
-An email from Roy contained Moss's newly assigned password and explicitly asked Jen to communicate it to Moss.
+An email from Roy contained Moss's newly assigned password and asked Jen to communicate it to Moss.
 
-The email therefore provided a direct credential disclosure path.
+The message exposed a credential in plaintext to an account that could read the mailbox.
 
-### Exploitation
+### 7.2 Exploitation
 
-The password from the email was used to switch to Moss's account:
+The password disclosed in the email was used to switch to Moss's account:
 
 ```bash
 su - moss
 ```
 
-The resulting identity was verified:
+The resulting identity was checked using:
 
 ```bash
 id
 ```
 
-The output confirmed UID `1001` and the `moss` group.
+The recorded output confirmed UID `1001` and the `moss` group.
 
-### Finding
+### 7.3 Security impact
 
-**Severity: High**
+**Observed result:** Access was obtained as `moss` using a password disclosed through local email.
 
-A plaintext password was disclosed through local email. Any account able to read that message could use the credential to access Moss's account.
+The exposure of authentication secrets through email can allow unauthorized account access and enable further movement through a system.
 
-### Remediation
+**Preliminary severity: High.**
+
+### 7.4 Recommended remediation
 
 - Do not transmit passwords in plaintext email.
-- Use a secure credential-management process.
-- Require unique credentials and rotate temporary passwords.
-- Restrict access to local mailboxes and audit sensitive communications.
+- Use an approved secure process for distributing temporary credentials.
+- Require unique credentials for each account.
+- Rotate temporary credentials after initial use or suspected exposure.
+- Restrict access to local mailboxes.
+- Review mailbox permissions and audit sensitive communications.
 
 ## 8. Privilege Escalation: Moss to Root
 
-### Discovery
+### 8.1 Discovery
 
-A running process named `upyourgame` was identified:
+During process enumeration, a process named `upyourgame` was identified:
 
 ```bash
 ps -ef | grep '[u]pyourgame'
 ```
 
-The process was running as root.
+The process was reported to be running as root.
 
 The executable was located at:
 
 `/home/moss/.games/upyourgame`
 
-Its permissions were inspected:
+Its permissions were inspected using:
 
 ```bash
 ls -l /home/moss/.games/upyourgame
 ```
 
-The output showed that the executable was owned by root and had the SUID bit enabled:
+The recorded output was:
 
 ```text
 -rwsr-xr-x 1 root root 16824 Jan 1 2020 /home/moss/.games/upyourgame
 ```
 
-The file type was confirmed:
+The `s` in the owner's execute position indicates that the SUID bit was set.
+
+The file type was also checked:
 
 ```bash
 file /home/moss/.games/upyourgame
@@ -265,90 +328,150 @@ file /home/moss/.games/upyourgame
 
 The output identified it as a 64-bit ELF executable with the set-user-ID bit enabled.
 
-### Exploitation
+### 8.2 Exploitation
 
-The program was executed as Moss:
+The executable was launched as Moss:
 
 ```bash
 /home/moss/.games/upyourgame
 ```
 
-The interactive program eventually exposed a shell. The resulting shell identity was verified with:
+The interactive program eventually exposed a shell.
+
+The shell identity was checked using:
 
 ```bash
 id
 ```
 
-The output included:
+The recorded output was:
 
 ```text
 uid=0(root) gid=1001(moss) groups=1001(moss)
 ```
 
-The effective UID of `0` confirmed root-level privileges.
+The effective UID of `0` indicates root-level effective privileges. The retained group ID is a separate detail and does not invalidate the evidence of an effective UID of `0`.
 
-### Finding
+### 8.3 Security impact
 
-**Severity: Critical**
+**Observed result:** The executable provided a shell with an effective UID of `0`.
 
-The root-owned SUID executable exposed a path to a root shell. A low-privileged user could execute the program and obtain root-level access.
+A privileged executable that exposes a root-level shell to an unprivileged user represents a critical privilege-escalation risk.
 
-### Remediation
+**Severity: Critical.**
 
-- Remove the SUID bit unless it is strictly required.
-- Audit all SUID and SGID executables.
-- Review custom binaries for unsafe shell invocation, input handling, and privilege transitions.
-- Avoid executing shell commands from privileged programs without strict input validation.
-- Monitor for unexpected processes running with elevated effective privileges.
+### 8.4 Recommended remediation
+
+- Remove the SUID bit if the executable does not require it.
+- Audit SUID and SGID executables across the system.
+- Investigate why the executable was installed in a user's home directory.
+- Review custom privileged binaries for unsafe shell invocation and privilege handling.
+- Avoid executing shell commands from privileged programs unless the implementation is carefully secured.
+- Monitor for unexpected SUID files and processes running with elevated effective privileges.
+
+### 8.5 Verification
+
+The recorded `id` output supports the conclusion that the shell had an effective UID of `0`.
+
+When retaining evidence for the portfolio, ensure that the terminal screenshot matches the output quoted in this section.
 
 ## 9. Flag Discovery and Evidence
 
-Three flags were located during the lab. Their values are intentionally omitted.
+Three flags were reported as discovered during the lab. Their values are intentionally omitted.
 
-One flag was found at:
+Two recorded locations were:
 
-`/var/www/html/reports/flag.txt`
+- `/var/www/html/reports/flag.txt`
+- `/root/flag.txt`
 
-After obtaining root-level access, another flag was located at:
+The remaining flag was found during subsequent inspection of files associated with the Roy account. Its exact location and submission status are not established in this report.
 
-`/root/flag.txt`
+### Evidence handling
 
-The remaining flag was found during subsequent inspection of files associated with the Roy account. The exact flag value and submission status are not included in this report.
+Retain relevant terminal output and screenshots demonstrating:
 
-For a reproducible portfolio record, retain screenshots or terminal output showing the discovery process while redacting flag contents, passwords, and private keys.
+- The OpenNetAdmin installation and initial access.
+- Credential discovery, with secrets redacted.
+- The `sudo` permission and transition to Jen.
+- The email-based credential disclosure and transition to Moss.
+- The SUID executable's permissions and the resulting effective UID.
+- Flag discovery without publishing the flag values.
 
-## 10. Key Findings Summary
+Do not publish passwords, private SSH keys, recovered secrets, or actual flag values.
 
-| Finding | Impact | Recommended priority |
+## 10. Key Findings and Risk Assessment
+
+The following severity ratings are preliminary assessments based on the observed lab behavior. They are not the result of a formal CVSS calculation.
+
+| Finding | Security impact | Preliminary severity |
 |---|---|---|
-| Vulnerable OpenNetAdmin installation | Remote command execution | Critical |
-| Exposed credential material | Account compromise | High |
-| Recoverable user password hash | Unauthorized SSH access | High |
-| Unrestricted `sudo` permission for `cp` | Lateral movement to another user | High |
-| Plaintext password in local email | Credential disclosure | High |
-| Root-owned SUID executable exposing a shell | Root compromise | Critical |
+| Vulnerable OpenNetAdmin installation | Remote command execution | High |
+| Exposed application credential material | Potential unauthorized database access | High |
+| Recoverable password hash | Unauthorized SSH access | High |
+| Overly permissive `sudo` rule for `cp` | Modification of another user's SSH authorization file | High |
+| Plaintext password in local email | Unauthorized account access | High |
+| Root-owned SUID executable exposing a shell | Root-level privilege escalation | Critical |
 
-## 11. Lessons Learned
+Severity should be reassessed against the actual exposure, required access, affected privileges, and potential impact in the target environment.
 
-This lab demonstrated how individually weak controls can combine into a complete compromise.
+## 11. Remediation Priorities
 
-Key lessons:
+### Priority 1: Remove the path to root
 
-1. **Initial access is only the beginning.** After obtaining a foothold, enumerate local files, services, users, credentials, and permissions.
-2. **Credentials are security boundaries.** Configuration files, password hashes, and local mail can reveal paths to additional accounts.
-3. **Review `sudo` permissions carefully.** General-purpose commands can become privilege-escalation primitives when run as another user.
-4. **SUID binaries require careful review.** A privileged executable must not expose unsafe behavior to unprivileged users.
-5. **Verify privilege changes.** The `id` command provided clear evidence that the shell had an effective UID of `0`.
-6. **Document evidence as you go.** Record commands, relevant outputs, account transitions, and remediation recommendations without publishing secrets.
+- Investigate and remediate the SUID executable.
+- Remove unnecessary SUID permissions.
+- Audit privileged binaries and their behavior.
+- Verify that unprivileged users cannot obtain a root-level shell through the executable.
 
-## 12. Conclusion
+### Priority 2: Restrict privilege delegation
 
-The assessment progressed from remote command execution to root-level access through a chain of application, credential-management, `sudo`, and SUID weaknesses.
+- Remove unrestricted `sudo` permissions for general-purpose file utilities.
+- Review the complete `sudoers` configuration.
+- Use narrowly scoped commands and scripts for administrative tasks.
+- Monitor changes to SSH authorization files.
 
-The most important defensive takeaway is that privilege escalation often results from several weaknesses working together rather than a single isolated vulnerability.
+### Priority 3: Secure credentials
 
-Fixing the initial application vulnerability, removing exposed credentials, narrowing `sudo` permissions, and auditing privileged binaries would substantially reduce the attack surface demonstrated in this lab.
+- Rotate exposed passwords and database credentials.
+- Remove secrets from unnecessary or accessible files.
+- Restrict access to credential stores.
+- Prohibit plaintext password sharing through email.
+- Enforce unique, strong credentials.
+
+### Priority 4: Remediate initial access
+
+- Patch or replace the vulnerable OpenNetAdmin installation.
+- Restrict access to administrative web applications.
+- Review logs for suspicious activity.
+- Investigate the extent of access available to the compromised web service account.
+
+### Priority 5: Improve monitoring
+
+- Monitor authentication failures and unusual successful logins.
+- Alert on unexpected SSH key changes.
+- Detect modifications to privileged files.
+- Monitor unexpected SUID executables and processes with elevated effective privileges.
+
+## 12. Lessons Learned
+
+This lab demonstrated how multiple weaknesses can combine to produce a complete compromise.
+
+1. **Initial access is only the beginning.** Local enumeration can reveal additional weaknesses after a foothold has been established.
+2. **Credential exposure creates attack paths.** Application configuration, password hashes, and local email can reveal opportunities to access additional accounts.
+3. **`sudo` rules require careful review.** General-purpose utilities can become privilege-escalation mechanisms when executed as another user.
+4. **SUID executables require scrutiny.** A privileged program must not expose unsafe functionality to unprivileged users.
+5. **Privilege changes must be verified.** Commands such as `id` provide evidence of the current identity and effective privileges.
+6. **Evidence supports technical conclusions.** Commands, outputs, screenshots, and clear explanations make findings easier to validate.
+7. **Remediation should address the full chain.** Fixing only the initial vulnerability may leave other privilege-escalation paths available.
+
+## 13. Conclusion
+
+The Five86-1 assessment progressed from remote command execution to root-level effective privileges through a chain of application, credential-management, privilege-delegation, and SUID-related weaknesses.
+
+The main defensive takeaway is that system compromise often results from multiple weaknesses working together rather than from one isolated vulnerability.
+
+Patching the vulnerable application, securing exposed credentials, restricting `sudo` permissions, protecting SSH authorization files, and auditing privileged executables would address the principal weaknesses demonstrated in this lab.
 
 ---
 
-**Portfolio note:** This report describes an authorized lab environment. All commands and observations refer to the lab target, not a production system.
+**Portfolio note:** This report documents an authorized lab exercise for educational purposes. The findings describe the observed lab environment and should not be interpreted as evidence of compromise on a production system.
